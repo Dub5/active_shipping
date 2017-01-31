@@ -181,7 +181,7 @@ module ActiveShipping
       end
     end
 
-    def build_consignee_info(destination)
+    def build_consignee_info(xml, destination)
       xml.Consignee do
         xml.CompanyName(destination.name)
         xml.AddressLine(destination.address1)
@@ -198,7 +198,7 @@ module ActiveShipping
       end
     end
 
-    def build_shipper_info(origin)
+    def build_shipper_info(xml, origin)
       xml.Shipper do
         xml.ShipperID(@options[:customer_number])
         xml.CompanyName(origin.company_name)
