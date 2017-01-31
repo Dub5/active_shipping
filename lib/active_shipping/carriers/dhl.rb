@@ -52,7 +52,7 @@ module ActiveShipping
             xml.DutyPaymentType('S') if options[:is_dutiable]
             xml.DutyAccountNumber(@options[:customer_number]) if options[:is_dutiable]
           end
-          build_consignee_info(destination)
+          build_consignee_info(xml, destination)
           xml.Dutiable do
             xml.DeclaredValue(package.value)
             xml.DeclaredCurrency(@options[:currency])
@@ -73,7 +73,7 @@ module ActiveShipping
             xml.DimensionUnit('C')
             xml.CurrencyCode(@options[:currency])
           end
-          build_shipper_info(origin)
+          build_shipper_info(xml, origin)
           xml.Notification do
             xml.EmailAddress('luis@dub5.com')
             xml.Message('Shipment validated')
