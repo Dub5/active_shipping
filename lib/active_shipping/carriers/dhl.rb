@@ -30,12 +30,23 @@ module ActiveShipping
       error_response(e.response.body, DHLShippingResponse)
     end
 
-    def cancel_shipment
-
+    def find_tracking_info
     end
 
-    def find_tracking_info
+    def cancel_pickup
+      cancel_pickup_request = build_cancel_pickup_request(origin, package, options)
+      response = ssl_post(TEST_URL, cancel_pickup_request)
+      parse_cancel_pickup_response(response)
+    rescue ActiveUtils::ResponseError, ActiveShipping::ResponseError => e
+      error_response(e.response, DHLShippingResponse)
+    end
 
+    def book_pickup(origin, package, options)
+      pickup_request = build_pickup_request(origin, package, options)
+      response = ssl_post(TEST_URL, pickup_request)
+      parse_pickup_response(response)
+    rescue ActiveUtils::ResponseError, ActiveShipping::ResponseError => e
+      error_response(e.response, DHLPickupResponse)
     end
 
     def build_shipment_request(origin, destination, package, package_items, options = {})
@@ -112,6 +123,65 @@ module ActiveShipping
       xml_builder.to_xml
     end
 
+    def build_pickup_request(origin, package, options)
+      xml_builder = Nokogiri::XML::Builder.new do |xml|
+        xml.BookPURequest('xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance', 'xsi:schemaLocation' => 'http://www.dhl.com book-pickup-global-req.xsd', 'schemaVersion' => '1.0') do
+          build_request_header(xml)
+          xml.RegionCode('AM')
+          xml.Requestor do
+            xml.AccountType('D')
+            xml.AccountNumber(@options[:customer_number])
+            xml.RequestorContact do
+              xml.PersonName(origin.name)
+              xml.Phone(origin.phone)
+            end
+            xml.CompanyName(origin.company_name)
+          end
+          xml.Place do
+            xml.LocationType('C')
+            xml.CompanyName(origin.company_name)
+            xml.Address1(origin.address1)
+            xml.Address2(origin.address2)
+            xml.PackageLocation('Front Door')
+            xml.City(origin.city)
+            xml.StateCode(origin.state)
+            xml.CountryCode(origin.country_code)
+            xml.PostalCode(origin.postal_code)
+          end
+          xml.Pickup do
+            xml.PickupDate(options[:pickup_date])
+            xml.ReadyByTime(options[:ready_time])
+            xml.CloseTime('20:00')
+            xml.Pieces(1)
+          end
+          xml.PickupContact do
+            xml.PersonName(origin.name)
+            xml.Phone(origin.phone)
+          end
+
+          xml.ShipmentDetails do
+            xml.AccountType('D')
+            xml.AccountNumber(@options[:customer_number])
+            xml.AWBNumber(options[:awb_number])
+            xml.NumberOfPieces(1)
+            xml.Weight(package.kilograms)
+            xml.WeightUnit('K')
+            xml.GlobalProductCode(options[:service])
+            xml.DoorTo('DD')
+          end
+          if package.pounds >= 50
+            xml.LargestPiece do
+              xml.Width(options[:width])
+              xml.Height(options[:height])
+              xml.Depth(options[:depth])
+            end
+          end
+          xml.parent.namespace = xml.parent.add_namespace_definition('req', 'http://www.dhl.com')
+        end
+      end
+      xml_builder.to_xml
+    end
+
     def parse_rates_response(response, origin, destination)
       doc = Nokogiri.XML(response)
       doc.remove_namespaces!
@@ -152,6 +222,17 @@ module ActiveShipping
       }
 
       DHLShippingResponse.new(true, "", {}, options)
+    end
+
+    def parse_pickup_response(response)
+      doc = Nokogiri.XML(response)
+      doc.remove_namespaces!
+      raise ActiveShipping::ResponseError, 'No Pickup' unless doc.at('BookPUResponse')
+      options = {
+        confirmation_number: doc.at('ConfirmationNumber').text,
+        action: doc.at('ActionNote').text
+      }
+      DHLPickupResponse.new(true, '', {}, options)
     end
 
     private
@@ -242,6 +323,15 @@ module ActiveShipping
     def initialize(success, message, params = {}, options = {})
       handle_error(message, options)
       super
+    end
+  end
+
+  class DHLPickupResponse
+    include DHLErrorResponse
+    attr_reader :confirmation_number
+    def initialize(success, message, params = {}, options = {})
+      handle_error(message, options)
+      @confirmation_number = options[:confirmation_number]
     end
   end
 
